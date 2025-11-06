@@ -1,7 +1,15 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Sparkles, User, LogIn, LogOut } from "lucide-react"
+import { Sparkles, User, LogIn, LogOut, UserCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 export async function NavHeader() {
   const supabase = await createClient()
@@ -16,7 +24,7 @@ export async function NavHeader() {
           <Sparkles className="w-6 h-6 text-primary" />
           <h1 className="text-xl font-bold">StoryForge AI</h1>
         </Link>
-        <nav className="flex gap-3">
+        <nav className="flex gap-3 items-center">
           <Link href="/gallery">
             <Button variant="ghost">Gallery</Button>
           </Link>
@@ -31,12 +39,43 @@ export async function NavHeader() {
                   Create
                 </Button>
               </Link>
-              <form action="/auth/logout" method="post">
-                <Button variant="ghost" type="submit" className="gap-2">
-                  <LogOut className="w-4 h-4" />
-                  Sign Out
-                </Button>
-              </form>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="rounded-full">
+                    <UserCircle className="w-5 h-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">Account</p>
+                      <p className="text-xs leading-none text-muted-foreground truncate">
+                        {user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/credits" className="cursor-pointer">
+                      Credits
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/my-stories" className="cursor-pointer">
+                      My Stories
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <form action="/auth/logout" method="post" className="w-full">
+                      <button type="submit" className="flex w-full items-center gap-2 text-left">
+                        <LogOut className="w-4 h-4" />
+                        Sign Out
+                      </button>
+                    </form>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           ) : (
             <>

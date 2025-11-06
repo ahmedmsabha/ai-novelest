@@ -48,8 +48,13 @@ export async function POST(req: Request) {
 
         const outlinePrompt = `You are a professional novel outliner. Create a DETAILED chapter-by-chapter outline for a novel organized into story arcs.
 
-⚠️ CRITICAL REQUIREMENT: You MUST create EXACTLY ${structure.arcs} arcs with EXACTLY ${structure.chaptersPerArc} chapters in EACH arc.
-Total chapters: ${structure.arcs * structure.chaptersPerArc} chapters (${structure.chaptersPerArc} × ${structure.arcs} arcs)
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT - THIS IS NON-NEGOTIABLE ⚠️⚠️⚠️
+You MUST create EXACTLY ${structure.arcs} arcs with EXACTLY ${structure.chaptersPerArc} chapters in EACH arc.
+Total chapters REQUIRED: ${structure.arcs * structure.chaptersPerArc} chapters (${structure.chaptersPerArc} chapters × ${structure.arcs} arcs)
+
+If you create ${structure.arcs - 1} arcs or ${structure.arcs + 1} arcs, you have FAILED.
+If any arc has ${structure.chaptersPerArc - 1} or ${structure.chaptersPerArc + 1} chapters, you have FAILED.
+Count your arcs and chapters before submitting. Every arc needs ${structure.chaptersPerArc} chapters.
 
 NOVEL SPECIFICATIONS:
 ${suggestedTitle ? `- Title: ${suggestedTitle}` : ''}
@@ -135,8 +140,8 @@ Create a professional, detailed outline with clear arc structure that will guide
         const { text: outline } = await generateText({
             model: google("gemini-2.5-flash"),
             prompt: outlinePrompt,
-            temperature: 0.7,
-            maxOutputTokens: 4000,
+            temperature: 0.5, // Lower temperature for more consistent structure
+            maxOutputTokens: 8000, // Increase to allow full outline
         })
 
         console.log("[generate-outline] Generated outline, length:", outline.length)
@@ -155,6 +160,57 @@ Create a professional, detailed outline with clear arc structure that will guide
         
         if (chapterMatches.length !== structure.arcs * structure.chaptersPerArc) {
             console.warn(`[generate-outline] ⚠️ Chapter count mismatch! Expected ${structure.arcs * structure.chaptersPerArc}, got ${chapterMatches.length}`)
+        }
+
+        // If structure is wrong, try regenerating with even more explicit prompt
+        if (arcMatches.length !== structure.arcs || chapterMatches.length !== structure.arcs * structure.chaptersPerArc) {
+            console.log("[generate-outline] Attempting regeneration with stricter prompt...")
+            
+            const strictPrompt = `STRICT INSTRUCTIONS - FOLLOW EXACTLY:
+
+You MUST create a novel outline with:
+- EXACTLY ${structure.arcs} arcs (no more, no less)
+- EXACTLY ${structure.chaptersPerArc} chapters in EACH arc
+- Total of EXACTLY ${structure.arcs * structure.chaptersPerArc} chapters
+
+Novel Details:
+${suggestedTitle ? `Title: ${suggestedTitle}` : ''}
+Concept: ${prompt}
+Genre: ${genre}
+Tone: ${tone}
+${languageInstruction}
+
+Format each arc as:
+## Arc [NUMBER]: [Title]
+
+Format each chapter as:
+### Chapter [NUMBER]: [Title]
+**Summary:** [2-3 sentences]
+
+Start with Arc 1, Chapter 1.
+Count chapters continuously (Arc 1: Chapters 1-${structure.chaptersPerArc}, Arc 2: Chapters ${structure.chaptersPerArc + 1}-${structure.chaptersPerArc * 2}, etc.)
+
+DO NOT skip arcs or chapters. Create ALL ${structure.arcs} arcs with ALL ${structure.chaptersPerArc} chapters each.`
+
+            const { text: strictOutline } = await generateText({
+                model: google("gemini-2.5-flash"),
+                prompt: strictPrompt,
+                temperature: 0.3, // Even lower temperature
+                maxOutputTokens: 8000,
+            })
+
+            // Validate again
+            const newArcMatches = strictOutline.match(/^## Arc \d+:/gm) || []
+            const newChapterMatches = strictOutline.match(/^### Chapter \d+:/gm) || []
+            
+            console.log(`[generate-outline] Regeneration result:`)
+            console.log(`  - Generated: ${newArcMatches.length} arcs, ${newChapterMatches.length} chapters`)
+            
+            // Use the better result
+            if (newArcMatches.length === structure.arcs && newChapterMatches.length === structure.arcs * structure.chaptersPerArc) {
+                console.log("[generate-outline] ✅ Regeneration successful!")
+                return Response.json({ outline: strictOutline })
+            }
         }
 
         return Response.json({ outline })

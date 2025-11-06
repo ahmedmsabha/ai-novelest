@@ -16,15 +16,29 @@ export default function GalleryPage() {
 
   useEffect(() => {
     async function loadData() {
-      // Fetch stories
-      const response = await fetch("/api/stories")
-      const data = await response.json()
-      setStories(data)
-
-      // Get user
+      // Get user first
       const supabase = createClient()
       const { data: { user: userData } } = await supabase.auth.getUser()
       setUser(userData)
+      console.log('[Gallery] User loaded:', userData?.email)
+
+      // Fetch stories
+      try {
+        const response = await fetch("/api/stories")
+        console.log('[Gallery] Stories API response status:', response.status)
+        
+        if (!response.ok) {
+          console.error('[Gallery] Failed to fetch stories:', response.statusText)
+          return
+        }
+        
+        const data = await response.json()
+        console.log('[Gallery] Stories loaded:', data.length, 'stories')
+        console.log('[Gallery] Story types:', data.map((s: any) => s.story_type))
+        setStories(data)
+      } catch (error) {
+        console.error('[Gallery] Error loading stories:', error)
+      }
     }
     loadData()
   }, [])
@@ -61,12 +75,20 @@ export default function GalleryPage() {
                 <Button variant="ghost">My Stories</Button>
               </Link>
             )}
-            <Link href={user ? "/generate" : "/auth/sign-up"}>
+            <Link href="/generate">
               <Button className="gap-2">
                 <Sparkles className="w-4 h-4" />
-                {user ? "Create" : "Sign Up"}
+                Create
               </Button>
             </Link>
+            {!user && (
+              <Link href="/auth/sign-up">
+                <Button variant="outline" className="gap-2">
+                  <User className="w-4 h-4" />
+                  Sign Up
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>
@@ -104,14 +126,17 @@ export default function GalleryPage() {
                     {filter === "all" ? "No stories yet" : `No ${filter} yet`}
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    {filter === "all"
-                      ? "Be the first to create an AI-generated story"
-                      : `Be the first to create a ${filter.slice(0, -1)}`}
+                    {user
+                      ? filter === "all"
+                        ? "Be the first to create an AI-generated story"
+                        : `Be the first to create a ${filter.slice(0, -1)}`
+                      : "Sign up to start creating AI-generated stories"
+                    }
                   </p>
                   <Link href={user ? "/generate" : "/auth/sign-up"}>
                     <Button className="gap-2">
                       <Sparkles className="w-4 h-4" />
-                      {user ? "Generate Story" : "Sign Up to Create"}
+                      {user ? "Create Story" : "Sign Up to Create"}
                     </Button>
                   </Link>
                 </div>

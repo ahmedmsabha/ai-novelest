@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
 
 interface Chapter {
     id: string
@@ -49,7 +50,7 @@ interface Arc {
     chapters: Chapter[]
 }
 
-export default function CreateNovelPage() {
+function CreateNovelPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const { toast } = useToast()
@@ -512,7 +513,9 @@ export default function CreateNovelPage() {
             }
 
             if (!response.ok) {
-                throw new Error("Failed to save novel")
+                const errorData = await response.text()
+                console.error("Save novel error response:", errorData)
+                throw new Error(`Failed to save novel: ${response.status} ${response.statusText}`)
             }
 
             const { id } = await response.json()
@@ -531,9 +534,13 @@ export default function CreateNovelPage() {
             }
         } catch (error) {
             console.error("Error saving novel:", error)
+            const errorMessage = error instanceof Error ? error.message : "Unknown error"
+            
             toast({
                 title: "Save Failed",
-                description: "Failed to save novel. Please try again.",
+                description: errorMessage.includes("401") || errorMessage.includes("Unauthorized")
+                    ? "Please log in to save your novel."
+                    : `Failed to save novel: ${errorMessage}`,
                 variant: "destructive",
             })
         } finally {
@@ -550,6 +557,218 @@ export default function CreateNovelPage() {
                 description: "Please wait while we create your PDF.",
             })
 
+            // Create a hidden container with the novel content
+            const container = document.createElement("div")
+            container.style.position = "absolute"
+            container.style.left = "-9999px"
+            container.style.width = "210mm" // A4 width
+            container.style.padding = "20mm"
+            container.style.backgroundColor = "white"
+            container.style.fontFamily = "Arial, sans-serif"
+            container.style.fontSize = "12pt"
+            container.style.lineHeight = "1.6"
+            container.style.color = "black"
+
+            // Detect if content contains Arabic/RTL text
+            const allContent = arcs.map(arc => 
+                arc.chapters.map(ch => ch.content || "").join(" ")
+            ).join(" ")
+            const hasArabic = /[\u0600-\u06FF]/.test(allContent) || /[\u0600-\u06FF]/.test(title)
+            if (hasArabic) {
+                container.style.direction = "rtl"
+                container.style.textAlign = "right"
+            }
+
+            // Title Page
+            const titleEl = document.createElement("h1")
+            titleEl.textContent = title
+            titleEl.style.fontSize = "32pt"
+            titleEl.style.fontWeight = "bold"
+            titleEl.style.textAlign = "center"
+            titleEl.style.marginTop = "80mm"
+            titleEl.style.marginBottom = "10mm"
+            container.appendChild(titleEl)
+
+            const subtitleEl = document.createElement("p")
+            subtitleEl.textContent = "A Novel"
+            subtitleEl.style.fontSize = "16pt"
+            subtitleEl.style.textAlign = "center"
+            subtitleEl.style.marginBottom = "5mm"
+            container.appendChild(subtitleEl)
+
+            const genreEl = document.createElement("p")
+            genreEl.textContent = `Genre: ${novelMetadata?.genre || 'Fiction'}`
+            genreEl.style.fontSize = "12pt"
+            genreEl.style.textAlign = "center"
+            genreEl.style.color = "#666"
+            genreEl.style.marginBottom = "40mm"
+            container.appendChild(genreEl)
+
+            // Page break
+            const pageBreak1 = document.createElement("div")
+            pageBreak1.style.pageBreakAfter = "always"
+            pageBreak1.style.height = "1px"
+            container.appendChild(pageBreak1)
+
+            // Table of Contents
+            const tocTitle = document.createElement("h2")
+            tocTitle.textContent = "Table of Contents"
+            tocTitle.style.fontSize = "24pt"
+            tocTitle.style.fontWeight = "bold"
+            tocTitle.style.marginBottom = "10mm"
+            container.appendChild(tocTitle)
+
+            arcs.forEach(arc => {
+                const arcToc = document.createElement("p")
+                arcToc.textContent = arc.title
+                arcToc.style.fontSize = "14pt"
+                arcToc.style.fontWeight = "bold"
+                arcToc.style.marginTop = "5mm"
+                arcToc.style.marginBottom = "2mm"
+                container.appendChild(arcToc)
+
+                arc.chapters.forEach(ch => {
+                    if (ch?.content) {
+                        const chapterToc = document.createElement("p")
+                        chapterToc.textContent = `  Chapter ${ch.number}: ${ch.title}`
+                        chapterToc.style.fontSize = "12pt"
+                        chapterToc.style.marginLeft = "10mm"
+                        chapterToc.style.marginBottom = "1mm"
+                        container.appendChild(chapterToc)
+                    }
+                })
+            })
+
+            // Page break
+            const pageBreak2 = document.createElement("div")
+            pageBreak2.style.pageBreakAfter = "always"
+            pageBreak2.style.height = "1px"
+            container.appendChild(pageBreak2)
+
+            // Chapters grouped by Arc
+            arcs.forEach(arc => {
+                // Arc title page
+                const arcTitle = document.createElement("h2")
+                arcTitle.textContent = arc.title
+                arcTitle.style.fontSize = "24pt"
+                arcTitle.style.fontWeight = "bold"
+                arcTitle.style.textAlign = "center"
+                arcTitle.style.marginTop = "20mm"
+                arcTitle.style.marginBottom = "5mm"
+                container.appendChild(arcTitle)
+
+                if (arc.description) {
+                    const arcDesc = document.createElement("p")
+                    arcDesc.textContent = arc.description
+                    arcDesc.style.fontSize = "14pt"
+                    arcDesc.style.textAlign = "center"
+                    arcDesc.style.marginBottom = "15mm"
+                    arcDesc.style.fontStyle = "italic"
+                    arcDesc.style.color = "#555"
+                    container.appendChild(arcDesc)
+                }
+
+                // Arc chapters
+                arc.chapters.forEach(ch => {
+                    if (ch?.content) {
+                        const chapterNum = document.createElement("h3")
+                        chapterNum.textContent = `Chapter ${ch.number}`
+                        chapterNum.style.fontSize = "20pt"
+                        chapterNum.style.fontWeight = "bold"
+                        chapterNum.style.textAlign = "center"
+                        chapterNum.style.marginTop = "15mm"
+                        chapterNum.style.marginBottom = "5mm"
+                        container.appendChild(chapterNum)
+
+                        const chapterTitle = document.createElement("h4")
+                        chapterTitle.textContent = ch.title
+                        chapterTitle.style.fontSize = "16pt"
+                        chapterTitle.style.fontWeight = "bold"
+                        chapterTitle.style.textAlign = "center"
+                        chapterTitle.style.marginBottom = "10mm"
+                        container.appendChild(chapterTitle)
+
+                        const chapterContent = document.createElement("div")
+                        chapterContent.style.whiteSpace = "pre-wrap"
+                        chapterContent.style.wordWrap = "break-word"
+                        chapterContent.style.marginBottom = "15mm"
+                        chapterContent.textContent = formatText(ch.content)
+                        container.appendChild(chapterContent)
+
+                        // Page break after each chapter
+                        const chapterBreak = document.createElement("div")
+                        chapterBreak.style.pageBreakAfter = "always"
+                        chapterBreak.style.height = "1px"
+                        container.appendChild(chapterBreak)
+                    }
+                })
+            })
+
+            document.body.appendChild(container)
+
+            // Generate canvas from HTML with error handling
+            let canvas
+            try {
+                canvas = await html2canvas(container, {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    backgroundColor: "#ffffff",
+                    ignoreElements: (element) => {
+                        return element.classList?.contains('no-pdf') || false
+                    },
+                    onclone: (clonedDoc) => {
+                        const clonedContainer = clonedDoc.querySelector('div[style*="position: absolute"]')
+                        if (clonedContainer instanceof HTMLElement) {
+                            // Helper function to convert any color to RGB or fallback
+                            const getSafeColor = (color: string, fallback: string): string => {
+                                if (!color || color === 'transparent' || color.includes('lab(') || color.includes('lch(') || color.includes('oklch(') || color.includes('var(')) {
+                                    return fallback
+                                }
+                                if (color.startsWith('rgb') || color.startsWith('#')) {
+                                    return color
+                                }
+                                return fallback
+                            }
+
+                            clonedContainer.style.color = '#000000'
+                            clonedContainer.style.backgroundColor = '#ffffff'
+                            clonedContainer.style.borderColor = '#cccccc'
+                            
+                            const allElements = clonedContainer.querySelectorAll('*')
+                            allElements.forEach((el) => {
+                                if (el instanceof HTMLElement) {
+                                    try {
+                                        const computedStyle = window.getComputedStyle(el)
+                                        el.style.color = getSafeColor(computedStyle.color, '#000000')
+                                        el.style.backgroundColor = getSafeColor(computedStyle.backgroundColor, 'transparent')
+                                        el.style.borderColor = getSafeColor(computedStyle.borderColor, '#cccccc')
+                                        el.style.removeProperty('--tw-prose-body')
+                                        el.style.removeProperty('--tw-prose-headings')
+                                        el.style.removeProperty('--tw-prose-links')
+                                    } catch (e) {
+                                        el.style.color = '#000000'
+                                        el.style.backgroundColor = 'transparent'
+                                    }
+                                }
+                            })
+
+                            const styleSheets = clonedDoc.querySelectorAll('link[rel="stylesheet"], style')
+                            styleSheets.forEach(sheet => sheet.remove())
+                        }
+                    },
+                })
+            } catch (error) {
+                document.body.removeChild(container)
+                console.error("html2canvas error details:", error)
+                throw error
+            }
+
+            document.body.removeChild(container)
+
+            // Create PDF from canvas
+            const imgData = canvas.toDataURL("image/png")
             const pdf = new jsPDF({
                 orientation: "portrait",
                 unit: "mm",
@@ -557,85 +776,25 @@ export default function CreateNovelPage() {
                 compress: true,
             })
 
-            const pageWidth = pdf.internal.pageSize.getWidth()
-            const pageHeight = pdf.internal.pageSize.getHeight()
-            const margin = 25
-            const maxWidth = pageWidth - (margin * 2)
-            let yPosition = margin
+            const pdfWidth = pdf.internal.pageSize.getWidth()
+            const pdfHeight = pdf.internal.pageSize.getHeight()
+            const imgWidth = pdfWidth
+            const imgHeight = (canvas.height * pdfWidth) / canvas.width
 
-            const addText = (text: string, fontSize: number, isBold: boolean = false, align: 'left' | 'center' = 'left') => {
-                pdf.setFontSize(fontSize)
-                pdf.setFont("helvetica", isBold ? "bold" : "normal")
+            let heightLeft = imgHeight
+            let position = 0
 
-                const lines = pdf.splitTextToSize(text, maxWidth)
+            // Add first page
+            pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+            heightLeft -= pdfHeight
 
-                for (const line of lines) {
-                    if (yPosition + 10 > pageHeight - margin) {
-                        pdf.addPage()
-                        yPosition = margin
-                    }
-                    const xPos = align === 'center' ? pageWidth / 2 : margin
-                    pdf.text(line, xPos, yPosition, { align })
-                    yPosition += fontSize * 0.5
-                }
-
-                yPosition += 3
-            }
-
-            const addPageBreak = () => {
+            // Add additional pages if content is longer than one page
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight
                 pdf.addPage()
-                yPosition = margin
+                pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+                heightLeft -= pdfHeight
             }
-
-            // Title Page
-            yPosition = pageHeight / 3
-            addText(title, 28, true, 'center')
-            yPosition += 10
-            addText(`A Novel`, 14, false, 'center')
-            yPosition += 5
-            addText(`Genre: ${novelMetadata?.genre || 'Fiction'}`, 10, false, 'center')
-
-            addPageBreak()
-
-            // Table of Contents
-            addText("Table of Contents", 20, true)
-            yPosition += 5
-
-            arcs.forEach(arc => {
-                addText(arc.title, 12, true)
-                arc.chapters.forEach(ch => {
-                    if (ch?.content) {
-                        addText(`  Chapter ${ch.number}: ${ch.title}`, 10, false)
-                    }
-                })
-                yPosition += 3
-            })
-
-            addPageBreak()
-
-            // Chapters grouped by Arc
-            arcs.forEach(arc => {
-                // Arc title page
-                addText(arc.title, 20, true, 'center')
-                if (arc.description) {
-                    addText(arc.description, 12, false, 'center')
-                }
-                yPosition += 10
-
-                // Arc chapters
-                arc.chapters.forEach(ch => {
-                    if (ch?.content) {
-                        addText(`Chapter ${ch.number}`, 18, true, 'center')
-                        addText(ch.title, 14, true, 'center')
-                        yPosition += 10
-
-                        const cleanContent = formatText(ch.content)
-                        addText(cleanContent, 11, false)
-
-                        addPageBreak()
-                    }
-                })
-            })
 
             pdf.save(`${title}.pdf`)
 
@@ -645,9 +804,12 @@ export default function CreateNovelPage() {
             })
         } catch (error) {
             console.error("Error generating PDF:", error)
+            const errorMessage = error instanceof Error ? error.message : "Unknown error"
+            console.error("Error details:", errorMessage)
+            
             toast({
                 title: "PDF generation failed",
-                description: "Failed to generate PDF. Please try again.",
+                description: `${errorMessage}. Please try again.`,
                 variant: "destructive",
             })
         }
@@ -1069,5 +1231,17 @@ export default function CreateNovelPage() {
                 </div>
             </main >
         </div >
+    )
+}
+
+export default function CreateNovelPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin" />
+            </div>
+        }>
+            <CreateNovelPageContent />
+        </Suspense>
     )
 }

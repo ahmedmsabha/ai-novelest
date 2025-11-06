@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Sparkles, ArrowLeft, Loader2, BookOpen, FileText, Coins, Download, Save } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { analytics } from "@/lib/analytics"
@@ -489,31 +491,155 @@ export default function GeneratePage() {
     if (!generatedStory) return
 
     try {
-      const response = await fetch("/api/export-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: storyTitle || "Untitled Story",
-          content: generatedStory,
-          genre,
-          tone,
-          storyType,
-        }),
+      toast({
+        title: "Generating PDF...",
+        description: "Please wait while we create your PDF.",
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to generate PDF")
+      // Create a hidden container with the story content
+      const container = document.createElement("div")
+      container.style.position = "absolute"
+      container.style.left = "-9999px"
+      container.style.width = "210mm" // A4 width
+      container.style.padding = "20mm"
+      container.style.backgroundColor = "white"
+      container.style.fontFamily = "Arial, sans-serif"
+      container.style.fontSize = "12pt"
+      container.style.lineHeight = "1.6"
+      container.style.color = "black"
+
+      // Detect if content contains Arabic/RTL text
+      const hasArabic = /[\u0600-\u06FF]/.test(generatedStory) || /[\u0600-\u06FF]/.test(storyTitle)
+      if (hasArabic) {
+        container.style.direction = "rtl"
+        container.style.textAlign = "right"
       }
 
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${storyTitle || "story"}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      // Add title
+      const titleEl = document.createElement("h1")
+      titleEl.textContent = storyTitle || "Untitled Story"
+      titleEl.style.fontSize = "24pt"
+      titleEl.style.fontWeight = "bold"
+      titleEl.style.marginBottom = "10mm"
+      titleEl.style.textAlign = hasArabic ? "right" : "center"
+      container.appendChild(titleEl)
+
+      // Add metadata
+      const metaEl = document.createElement("p")
+      metaEl.textContent = `${storyType === "novel" ? "Novel" : "Short Story"} | ${genre} | ${tone}`
+      metaEl.style.color = "#666"
+      metaEl.style.fontSize = "10pt"
+      metaEl.style.marginBottom = "10mm"
+      metaEl.style.textAlign = hasArabic ? "right" : "center"
+      container.appendChild(metaEl)
+
+      // Add separator
+      const hr = document.createElement("hr")
+      hr.style.border = "none"
+      hr.style.borderTop = "1px solid #ccc"
+      hr.style.marginBottom = "10mm"
+      container.appendChild(hr)
+
+      // Add content
+      const contentEl = document.createElement("div")
+      contentEl.style.whiteSpace = "pre-wrap"
+      contentEl.style.wordWrap = "break-word"
+      contentEl.textContent = generatedStory
+      container.appendChild(contentEl)
+
+      document.body.appendChild(container)
+
+      // Generate canvas from HTML with error handling
+      let canvas
+      try {
+        canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: "#ffffff",
+          ignoreElements: (element) => {
+            return element.classList?.contains('no-pdf') || false
+          },
+          onclone: (clonedDoc) => {
+            const clonedContainer = clonedDoc.querySelector('div[style*="position: absolute"]')
+            if (clonedContainer instanceof HTMLElement) {
+              // Helper function to convert any color to RGB or fallback
+              const getSafeColor = (color: string, fallback: string): string => {
+                if (!color || color === 'transparent' || color.includes('lab(') || color.includes('lch(') || color.includes('oklch(') || color.includes('var(')) {
+                  return fallback
+                }
+                if (color.startsWith('rgb') || color.startsWith('#')) {
+                  return color
+                }
+                return fallback
+              }
+
+              clonedContainer.style.color = '#000000'
+              clonedContainer.style.backgroundColor = '#ffffff'
+              clonedContainer.style.borderColor = '#cccccc'
+              
+              const allElements = clonedContainer.querySelectorAll('*')
+              allElements.forEach((el) => {
+                if (el instanceof HTMLElement) {
+                  try {
+                    const computedStyle = window.getComputedStyle(el)
+                    el.style.color = getSafeColor(computedStyle.color, '#000000')
+                    el.style.backgroundColor = getSafeColor(computedStyle.backgroundColor, 'transparent')
+                    el.style.borderColor = getSafeColor(computedStyle.borderColor, '#cccccc')
+                    el.style.removeProperty('--tw-prose-body')
+                    el.style.removeProperty('--tw-prose-headings')
+                    el.style.removeProperty('--tw-prose-links')
+                  } catch (e) {
+                    el.style.color = '#000000'
+                    el.style.backgroundColor = 'transparent'
+                  }
+                }
+              })
+
+              const styleSheets = clonedDoc.querySelectorAll('link[rel="stylesheet"], style')
+              styleSheets.forEach(sheet => sheet.remove())
+            }
+          },
+        })
+      } catch (error) {
+        document.body.removeChild(container)
+        console.error("html2canvas error details:", error)
+        throw error
+      }
+
+      document.body.removeChild(container)
+
+      // Create PDF from canvas
+      const imgData = canvas.toDataURL("image/png")
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      })
+
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const imgWidth = pdfWidth
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width
+
+      let heightLeft = imgHeight
+      let position = 0
+
+      // Add first page
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+      heightLeft -= pdfHeight
+
+      // Add additional pages if content is longer than one page
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+        heightLeft -= pdfHeight
+      }
+
+      pdf.save(`${storyTitle || "story"}.pdf`)
 
       toast({
         title: "Downloaded!",
@@ -521,9 +647,12 @@ export default function GeneratePage() {
       })
     } catch (error) {
       console.error("Error downloading PDF:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      console.error("Error details:", errorMessage)
+      
       toast({
         title: "Download failed",
-        description: "Failed to generate PDF. Try downloading as TXT instead.",
+        description: `${errorMessage}. Try downloading as TXT instead.`,
         variant: "destructive",
       })
     }

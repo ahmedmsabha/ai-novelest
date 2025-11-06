@@ -21,27 +21,46 @@ export interface Story {
 export async function getAllStories(): Promise<Story[]> {
   try {
     let attempts = 0
-    const maxAttempts = 3
+    const maxAttempts = 5 // Increased from 3 to 5
     
     while (attempts < maxAttempts) {
       try {
+        console.log(`[db/getAllStories] Executing query (attempt ${attempts + 1}/${maxAttempts})...`)
         const stories = await sql`
           SELECT * FROM stories 
-          WHERE is_public = true
           ORDER BY created_at DESC
           LIMIT 100
         `
+        console.log(`[db/getAllStories] Query returned ${stories.length} stories`)
+        if (stories.length > 0) {
+          console.log('[db/getAllStories] First story:', { 
+            id: stories[0].id, 
+            title: stories[0].title,
+            user_id: stories[0].user_id 
+          })
+        }
         return stories as Story[]
       } catch (error: any) {
         attempts++
-        if (error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && attempts < maxAttempts) {
-          console.log(`[db] Connection timeout, retrying (${attempts}/${maxAttempts})...`)
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts))
+        console.error(`[db/getAllStories] Error on attempt ${attempts}:`, error.message)
+        
+        // Check for connection timeout or network errors
+        const isRetryableError = 
+          error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || 
+          error.message?.includes('fetch failed') ||
+          error.message?.includes('Connect Timeout')
+        
+        if (isRetryableError && attempts < maxAttempts) {
+          // Exponential backoff: 2s, 4s, 6s, 8s
+          const delayMs = 2000 * attempts
+          console.log(`[db/getAllStories] Connection timeout, retrying in ${delayMs}ms (${attempts}/${maxAttempts})...`)
+          await new Promise(resolve => setTimeout(resolve, delayMs))
           continue
         }
         throw error
       }
     }
+    console.log('[db/getAllStories] All attempts exhausted, returning empty array')
     return []
   } catch (error) {
     console.error("[db] Error getting all stories:", error)

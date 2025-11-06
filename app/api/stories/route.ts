@@ -3,7 +3,10 @@ import { createStory, getAllStories } from "@/lib/db"
 
 export async function GET() {
   try {
+    console.log('[stories/GET] Fetching all stories...')
     const stories = await getAllStories()
+    console.log('[stories/GET] Retrieved stories:', stories.length)
+    console.log('[stories/GET] Story types:', stories.map(s => `${s.id}: ${s.story_type}`))
 
     const storiesWithPreview = stories.map((story) => ({
       id: story.id,
@@ -16,9 +19,10 @@ export async function GET() {
       user_id: story.user_id,
     }))
 
+    console.log('[stories/GET] Returning stories with preview')
     return Response.json(storiesWithPreview)
   } catch (error) {
-    console.error("[v0] Error fetching stories:", error)
+    console.error("[stories/GET] Error fetching stories:", error)
     return new Response("Failed to fetch stories", { status: 500 })
   }
 }
@@ -35,13 +39,16 @@ export async function POST(req: Request) {
       return new Response("Unauthorized", { status: 401 })
     }
 
-    const { title, content, genre, tone, length, prompt, storyType } = await req.json()
+    const { title, content, genre, tone, length, prompt, storyType, isPublished, outline, chaptersData } = await req.json()
 
     console.log("[stories/POST] Saving story:", {
       title,
       storyType,
       contentLength: content?.length,
-      userId: user.id
+      userId: user.id,
+      isPublished,
+      hasOutline: !!outline,
+      hasChaptersData: !!chaptersData
     })
 
     const wordCount = content.split(/\s+/).length

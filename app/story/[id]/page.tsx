@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
 
 export default function StoryPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -134,6 +135,152 @@ export default function StoryPage({ params }: { params: Promise<{ id: string }> 
         description: "Please wait while we create your PDF.",
       })
 
+      // Create a hidden container with the story content
+      const container = document.createElement("div")
+      container.style.position = "absolute"
+      container.style.left = "-9999px"
+      container.style.width = "210mm" // A4 width
+      container.style.padding = "20mm"
+      container.style.backgroundColor = "white"
+      container.style.fontFamily = "Arial, sans-serif"
+      container.style.fontSize = "12pt"
+      container.style.lineHeight = "1.6"
+      container.style.color = "black"
+
+      // Detect if content contains Arabic/RTL text
+      const hasArabic = /[\u0600-\u06FF]/.test(story.content) || /[\u0600-\u06FF]/.test(story.title)
+      if (hasArabic) {
+        container.style.direction = "rtl"
+        container.style.textAlign = "right"
+      }
+
+      // Add title
+      const titleEl = document.createElement("h1")
+      titleEl.textContent = story.title
+      titleEl.style.fontSize = "24pt"
+      titleEl.style.fontWeight = "bold"
+      titleEl.style.marginBottom = "10mm"
+      titleEl.style.textAlign = hasArabic ? "right" : "center"
+      container.appendChild(titleEl)
+
+      // Add metadata
+      const metaEl = document.createElement("p")
+      metaEl.textContent = `${story.story_type === "novel" ? "Novel" : "Short Story"} | ${story.genre} | ${story.tone}`
+      metaEl.style.color = "#666"
+      metaEl.style.fontSize = "10pt"
+      metaEl.style.marginBottom = "10mm"
+      metaEl.style.textAlign = hasArabic ? "right" : "center"
+      container.appendChild(metaEl)
+
+      // Add separator
+      const hr = document.createElement("hr")
+      hr.style.border = "none"
+      hr.style.borderTop = "1px solid #ccc"
+      hr.style.marginBottom = "10mm"
+      container.appendChild(hr)
+
+      // Add content
+      if (story.story_type === "novel" && chapters.length > 1) {
+        chapters.forEach((chapter) => {
+          if (chapter.content) {
+            const chapterTitle = document.createElement("h2")
+            chapterTitle.textContent = chapter.title
+            chapterTitle.style.fontSize = "18pt"
+            chapterTitle.style.fontWeight = "bold"
+            chapterTitle.style.marginTop = "10mm"
+            chapterTitle.style.marginBottom = "5mm"
+            container.appendChild(chapterTitle)
+
+            const chapterContent = document.createElement("div")
+            chapterContent.style.whiteSpace = "pre-wrap"
+            chapterContent.style.wordWrap = "break-word"
+            chapterContent.textContent = chapter.content
+            container.appendChild(chapterContent)
+          }
+        })
+      } else {
+        const contentEl = document.createElement("div")
+        contentEl.style.whiteSpace = "pre-wrap"
+        contentEl.style.wordWrap = "break-word"
+        contentEl.textContent = story.content
+        container.appendChild(contentEl)
+      }
+
+      document.body.appendChild(container)
+
+      // Generate canvas from HTML with error handling
+      let canvas
+      try {
+        canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: "#ffffff",
+          ignoreElements: (element) => {
+            // Ignore elements that might cause issues
+            return element.classList?.contains('no-pdf') || false
+          },
+          onclone: (clonedDoc) => {
+            // Remove any problematic CSS that html2canvas can't parse
+            const clonedContainer = clonedDoc.querySelector('div[style*="position: absolute"]')
+            if (clonedContainer instanceof HTMLElement) {
+              // Helper function to convert any color to RGB or fallback
+              const getSafeColor = (color: string, fallback: string): string => {
+                if (!color || color === 'transparent' || color.includes('lab(') || color.includes('lch(') || color.includes('oklch(') || color.includes('var(')) {
+                  return fallback
+                }
+                // If it's already rgb/rgba/hex, return it
+                if (color.startsWith('rgb') || color.startsWith('#')) {
+                  return color
+                }
+                return fallback
+              }
+
+              // Force simple, compatible colors on all elements
+              clonedContainer.style.color = '#000000'
+              clonedContainer.style.backgroundColor = '#ffffff'
+              clonedContainer.style.borderColor = '#cccccc'
+              
+              const allElements = clonedContainer.querySelectorAll('*')
+              allElements.forEach((el) => {
+                if (el instanceof HTMLElement) {
+                  try {
+                    const computedStyle = window.getComputedStyle(el)
+                    
+                    // Set safe colors, avoid Lab/LCH/CSS variables
+                    el.style.color = getSafeColor(computedStyle.color, '#000000')
+                    el.style.backgroundColor = getSafeColor(computedStyle.backgroundColor, 'transparent')
+                    el.style.borderColor = getSafeColor(computedStyle.borderColor, '#cccccc')
+                    
+                    // Remove any CSS variables
+                    el.style.removeProperty('--tw-prose-body')
+                    el.style.removeProperty('--tw-prose-headings')
+                    el.style.removeProperty('--tw-prose-links')
+                  } catch (e) {
+                    // If we can't process this element, set defaults
+                    el.style.color = '#000000'
+                    el.style.backgroundColor = 'transparent'
+                  }
+                }
+              })
+
+              // Remove all stylesheets to prevent Lab color leakage
+              const styleSheets = clonedDoc.querySelectorAll('link[rel="stylesheet"], style')
+              styleSheets.forEach(sheet => sheet.remove())
+            }
+          },
+        })
+      } catch (error) {
+        document.body.removeChild(container)
+        console.error("html2canvas error details:", error)
+        throw error
+      }
+
+      document.body.removeChild(container)
+
+      // Create PDF from canvas
+      const imgData = canvas.toDataURL("image/png")
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -141,69 +288,24 @@ export default function StoryPage({ params }: { params: Promise<{ id: string }> 
         compress: true,
       })
 
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const pageHeight = pdf.internal.pageSize.getHeight()
-      const margin = 20
-      const maxWidth = pageWidth - margin * 2
-      let yPosition = margin
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const imgWidth = pdfWidth
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width
 
-      const addText = (
-        text: string,
-        fontSize: number,
-        isBold: boolean = false,
-        align: "left" | "center" = "left"
-      ) => {
-        pdf.setFontSize(fontSize)
-        pdf.setFont("helvetica", isBold ? "bold" : "normal")
+      let heightLeft = imgHeight
+      let position = 0
 
-        const lines = pdf.splitTextToSize(text, maxWidth)
+      // Add first page
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+      heightLeft -= pdfHeight
 
-        lines.forEach((line: string) => {
-          if (yPosition + fontSize * 0.5 > pageHeight - margin) {
-            pdf.addPage()
-            yPosition = margin
-          }
-
-          const xPos = align === "center" ? pageWidth / 2 : margin
-          pdf.text(line, xPos, yPosition, { align })
-          yPosition += fontSize * 0.5
-        })
-
-        yPosition += 3
-      }
-
-      // Title
-      addText(story.title, 20, true, "center")
-      yPosition += 5
-
-      // Metadata
-      pdf.setFontSize(10)
-      pdf.setTextColor(100, 100, 100)
-      const metaText = `${story.story_type === "novel" ? "Novel" : "Short Story"} | ${story.genre} | ${story.tone}`
-      pdf.text(metaText, pageWidth / 2, yPosition, { align: "center" })
-      yPosition += 10
-      pdf.setTextColor(0, 0, 0)
-
-      // Separator
-      pdf.setLineWidth(0.5)
-      pdf.line(margin, yPosition, pageWidth - margin, yPosition)
-      yPosition += 10
-
-      // Content
-      if (story.story_type === "novel" && chapters.length > 1) {
-        chapters.forEach((chapter, index) => {
-          if (chapter.content) {
-            addText(`Chapter: ${chapter.title}`, 16, true, "left")
-            yPosition += 5
-            addText(chapter.content, 11, false, "left")
-
-            if (index < chapters.length - 1) {
-              yPosition += 10
-            }
-          }
-        })
-      } else {
-        addText(story.content, 11, false, "left")
+      // Add additional pages if content is longer than one page
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+        heightLeft -= pdfHeight
       }
 
       // Save
@@ -215,9 +317,12 @@ export default function StoryPage({ params }: { params: Promise<{ id: string }> 
       })
     } catch (error) {
       console.error("PDF generation error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      console.error("Error details:", errorMessage)
+      
       toast({
         title: "PDF generation failed",
-        description: "Please try TXT format instead.",
+        description: `${errorMessage}. Please try TXT format instead.`,
         variant: "destructive",
       })
     }
