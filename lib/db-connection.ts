@@ -22,11 +22,6 @@ export function getDbConnection() {
       fetchOptions: {
         cache: "no-store",
       },
-      fetchConnectionCache: true,
-      // Increase timeout to 30 seconds (helps with cold starts)
-      fetchEndpoint: process.env.NEON_DATABASE_URL.split('@')[1]?.split('/')[0] 
-        ? `https://${process.env.NEON_DATABASE_URL.split('@')[1].split('/')[0]}` 
-        : undefined,
     })
   }
 

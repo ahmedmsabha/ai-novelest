@@ -73,7 +73,7 @@ export default function GeneratePage() {
     }
   }
 
-  const handleGenerateTitle = async () => {
+  const handleGenerateTitle = async (): Promise<void> => {
     if (!prompt.trim()) {
       toast({
         title: "Prompt required",
@@ -99,15 +99,15 @@ export default function GeneratePage() {
       const data = await response.json()
       setSuggestedTitle(data.title)
 
-      // Track analytics
-      analytics.titleGenerated({ genre, tone })
-
       toast({
         title: "Title generated!",
         description: `Suggestion: "${data.title}"`,
       })
+
+      // Track with proper typing
+      analytics.titleGenerated({ genre, tone })
     } catch (error) {
-      console.error("[v0] Error generating title:", error)
+      console.error("Error generating title:", error)
       toast({
         title: "Title generation failed",
         description: "Failed to generate title. Please try again.",
@@ -118,7 +118,7 @@ export default function GeneratePage() {
     }
   }
 
-  const handleGenerateOutline = async () => {
+  const handleGenerateOutline = async (): Promise<void> => {
     if (!prompt.trim()) {
       toast({
         title: "Prompt required",
@@ -128,10 +128,11 @@ export default function GeneratePage() {
       return
     }
 
+    console.log(`[generate] Starting outline generation with ${numberOfArcs} arcs × ${chaptersPerArc} chapters`)
+
     setIsGenerating(true)
 
     try {
-      // Generate AI title if not already generated
       let finalTitle = suggestedTitle
       if (!finalTitle) {
         try {
@@ -195,7 +196,7 @@ export default function GeneratePage() {
 
       const data = await response.json()
 
-      // Track analytics
+      // Track analytics with proper typing
       analytics.outlineGenerated({
         genre,
         tone,
@@ -209,7 +210,6 @@ export default function GeneratePage() {
         description: "Redirecting to novel builder...",
       })
 
-      // Store in session and navigate
       const metadata = {
         prompt,
         genre,
@@ -225,7 +225,7 @@ export default function GeneratePage() {
 
       router.push("/create-novel")
     } catch (error) {
-      console.error("[v0] Error generating outline:", error)
+      console.error("Error generating outline:", error)
       toast({
         title: "Generation failed",
         description: "Failed to generate outline. Please try again.",
@@ -237,7 +237,7 @@ export default function GeneratePage() {
     }
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (): Promise<void> => {
     if (!prompt.trim()) {
       toast({
         title: "Prompt required",
@@ -255,7 +255,16 @@ export default function GeneratePage() {
       const response = await fetch("/api/generate-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, genre, tone, length, storyType, language, pointOfView, writingStyle }),
+        body: JSON.stringify({ 
+          prompt, 
+          genre, 
+          tone, 
+          length, 
+          storyType, 
+          language, 
+          pointOfView, 
+          writingStyle 
+        }),
       })
 
       if (response.status === 402) {
@@ -292,98 +301,49 @@ export default function GeneratePage() {
       }
 
       let fullText = ""
-      let chunkCount = 0
+      let hasSeenTitle = false
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
-        chunkCount++
+        fullText += chunk
 
-        // Log first few chunks for debugging
-        if (chunkCount <= 3) {
-          console.log(`Chunk ${chunkCount}:`, chunk.substring(0, 200))
-        }
-
-        const lines = chunk.split("\n")
-
+        const lines = fullText.split("\n")
         for (const line of lines) {
-          if (line.trim() && !line.includes("[DONE]")) {
-            try {
-              // Vercel AI SDK format: "0:" followed by JSON string
-              if (line.startsWith("0:")) {
-                const jsonStr = line.slice(2).trim()
-                if (jsonStr && jsonStr !== '""') {
-                  // Remove quotes if it's a quoted string
-                  const text = jsonStr.startsWith('"') && jsonStr.endsWith('"')
-                    ? JSON.parse(jsonStr)
-                    : jsonStr
-                  fullText += text
-                  setGeneratedStory(fullText)
-                }
+          if (line.startsWith("0:")) {
+            const content = line.substring(2).trim()
+            if (content) {
+              const titleMatch = content.match(/^#\s+(.+)$/m)
+              if (titleMatch && !hasSeenTitle) {
+                const extractedTitle = titleMatch[1].trim()
+                setStoryTitle(extractedTitle)
+                hasSeenTitle = true
               }
-              // Handle other data formats
-              else if (line.startsWith("data: ")) {
-                const dataStr = line.slice(6).trim()
-                if (dataStr && dataStr !== "[DONE]") {
-                  try {
-                    const data = JSON.parse(dataStr)
-                    // Handle text-delta events from Vercel AI SDK
-                    if (data.type === "text-delta" && data.delta) {
-                      fullText += data.delta
-                      setGeneratedStory(fullText)
-                    }
-                    // Fallback to content/text properties
-                    else if (data.content || data.text) {
-                      fullText += (data.content || data.text)
-                      setGeneratedStory(fullText)
-                    }
-                  } catch {
-                    // Not JSON, treat as raw text
-                    fullText += dataStr
-                    setGeneratedStory(fullText)
-                  }
-                }
-              }
-            } catch (e) {
-              console.error("Error parsing chunk:", e, "Line:", line)
+              setGeneratedStory((prev) => prev + content)
             }
           }
         }
       }
 
-      console.log(`Total chunks received: ${chunkCount}`)
-      console.log("Final story length:", fullText.length, "characters")
-
-      // Extract title or use prompt as title
-      const titleMatch = fullText.match(/^#\s*(.+)$/m)
-      if (titleMatch) {
-        setStoryTitle(titleMatch[1].trim())
-        console.log("Extracted title:", titleMatch[1].trim())
-      } else {
-        // Use first line or prompt as title
-        const firstLine = fullText.split('\n')[0].trim()
-        const fallbackTitle = firstLine || prompt.substring(0, 50)
-        setStoryTitle(fallbackTitle)
-        console.log("Using fallback title:", fallbackTitle)
-      }
-
-      console.log("Story ready to save. Title:", titleMatch ? titleMatch[1] : "fallback")
-
-      await fetchCredits()
+      // Track analytics
+      analytics.storyGenerated({
+        genre,
+        tone,
+        length,
+        storyType,
+        wordCount: fullText.split(/\s+/).length,
+      })
 
       toast({
         title: `${storyType === "novel" ? "Novel" : "Story"} generated!`,
-        description: "Your content has been created successfully.",
+        description: "Your content is ready. You can now save it.",
       })
 
-      // Show error if content is empty
-      if (!fullText || fullText.trim().length === 0) {
-        throw new Error("Generated story is empty")
-      }
+      fetchCredits()
     } catch (error) {
-      console.error("[v0] Error generating story:", error)
+      console.error("Error generating story:", error)
       toast({
         title: "Generation failed",
         description: "Failed to generate content. Please try again.",

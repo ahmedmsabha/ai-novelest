@@ -26,11 +26,12 @@ export async function getAllStories(): Promise<Story[]> {
     while (attempts < maxAttempts) {
       try {
         console.log(`[db/getAllStories] Executing query (attempt ${attempts + 1}/${maxAttempts})...`)
-        const stories = await sql`
+        const result = await sql`
           SELECT * FROM stories 
           ORDER BY created_at DESC
           LIMIT 100
         `
+        const stories = result as Story[]
         console.log(`[db/getAllStories] Query returned ${stories.length} stories`)
         if (stories.length > 0) {
           console.log('[db/getAllStories] First story:', { 
@@ -39,7 +40,7 @@ export async function getAllStories(): Promise<Story[]> {
             user_id: stories[0].user_id 
           })
         }
-        return stories as Story[]
+        return stories
       } catch (error: any) {
         attempts++
         console.error(`[db/getAllStories] Error on attempt ${attempts}:`, error.message)

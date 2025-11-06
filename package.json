@@ -5,9 +5,12 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "lint": "eslint .",
-    "start": "next start",
+    "lint": "next lint",
+    "lint:check": "next lint",
+    "type-check": "tsc --noEmit",
     "verify": "node scripts/verify-setup.js",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "clean": "rm -rf .next node_modules",
     "db:setup": "node -r dotenv/config scripts/setup-database.js",
     "db:migrate": "echo 'Run the SQL scripts manually or use: psql $NEON_DATABASE_URL -f scripts/002_create_all_tables.sql'"
   },

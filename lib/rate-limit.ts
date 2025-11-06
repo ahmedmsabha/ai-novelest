@@ -27,11 +27,11 @@ export function rateLimit(options?: RateLimitOptions) {
             // Clean up expired entries if store is getting too large
             if (store.size > maxTokens) {
                 const keysToDelete: string[] = []
-                for (const [key, value] of store.entries()) {
+                store.forEach((value, key) => {
                     if (now > value.resetTime) {
                         keysToDelete.push(key)
                     }
-                }
+                })
                 keysToDelete.forEach(key => store.delete(key))
             }
 

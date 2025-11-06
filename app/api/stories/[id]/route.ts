@@ -2,7 +2,6 @@ import { getStoryById } from "@/lib/db"
 import { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
 import { createClient } from "@/lib/supabase/server"
-import { toast } from "react-toastify"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
@@ -120,99 +119,5 @@ export async function PUT(
     } catch (error) {
         console.error("[stories/PUT] Error:", error)
         return Response.json({ error: "Failed to update story" }, { status: 500 })
-    }
-}
-
-export const handleDownloadPdf = async (story, chapters) => {
-    try {
-        toast({
-            title: "Generating PDF...",
-            description: "Please wait while we create your PDF.",
-        })
-
-        const pdf = new jsPDF({
-            orientation: "portrait",
-            unit: "mm",
-            format: "a4",
-        })
-
-        const pageWidth = pdf.internal.pageSize.getWidth()
-        const pageHeight = pdf.internal.pageSize.getHeight()
-        const margin = 20
-        const maxWidth = pageWidth - (margin * 2)
-        let yPosition = margin
-
-        // Helper function to add text with page breaks
-        const addText = (text: string, fontSize: number, isBold: boolean = false, align: 'left' | 'center' = 'left') => {
-            pdf.setFontSize(fontSize)
-            pdf.setFont("helvetica", isBold ? "bold" : "normal")
-
-            const lines = pdf.splitTextToSize(text, maxWidth)
-
-            for (const line of lines) {
-                if (yPosition + 10 > pageHeight - margin) {
-                    pdf.addPage()
-                    yPosition = margin
-                }
-                const xPos = align === 'center' ? pageWidth / 2 : margin
-                pdf.text(line, xPos, yPosition, { align })
-                yPosition += fontSize * 0.5
-            }
-
-            yPosition += 3
-        }
-
-        // Title
-        addText(story.title, 24, true, 'center')
-        yPosition += 5
-
-        // Metadata
-        pdf.setFontSize(10)
-        pdf.setTextColor(100, 100, 100)
-        const metaText = `Type: ${story.story_type === "novel" ? "Novel" : "Short Story"} | Genre: ${story.genre} | Tone: ${story.tone}`
-        pdf.text(metaText, pageWidth / 2, yPosition, { align: 'center' })
-        yPosition += 10
-        pdf.setTextColor(0, 0, 0)
-
-        // Separator line
-        pdf.setLineWidth(0.5)
-        pdf.line(margin, yPosition, pageWidth - margin, yPosition)
-        yPosition += 10
-
-        // Process content
-        if (story.story_type === "novel" && chapters.length > 1) {
-            // For novels with chapters
-            chapters.forEach((chapter) => {
-                if (chapter.content) {
-                    addText(`Chapter ${chapter.number}: ${chapter.title}`, 18, true, 'center')
-                    yPosition += 5
-                    addText(chapter.content, 11, false)
-
-                    // Add page break between chapters
-                    if (yPosition > margin + 10) {
-                        pdf.addPage()
-                        yPosition = margin
-                    }
-                }
-            })
-        } else {
-            // For short stories or novels without parsed chapters
-            addText(story.content, 11, false)
-        }
-
-        // Save PDF
-        pdf.save(`${story.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
-
-        toast({
-            title: "Downloaded!",
-            description: "Your story has been downloaded as PDF.",
-        })
-    } catch (error) {
-        console.error("PDF generation error:", error)
-        toast({
-            title: "PDF generation failed",
-            description: "Failed to generate PDF. Please try again.",
-            variant: "destructive",
-        })
     }
 }
