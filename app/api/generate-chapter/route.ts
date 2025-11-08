@@ -1,6 +1,8 @@
 import { streamText } from "ai"
 import { google } from "@ai-sdk/google"
 import { generationLimiter } from "@/lib/rate-limit"
+import { createClient } from "@/lib/supabase/server"
+import { getUserCredits, deductCredit } from "@/lib/credits"
 
 export const maxDuration = 60
 
@@ -34,7 +36,51 @@ export async function POST(req: Request) {
             language,
             pointOfView,
             writingStyle,
+            isFirstChapterOfArc, // New parameter to indicate if this is the first chapter of an arc
         } = await req.json()
+
+        // Only deduct credit for the first chapter of each arc
+        if (isFirstChapterOfArc) {
+            const supabase = await createClient()
+            const {
+                data: { user },
+            } = await supabase.auth.getUser()
+
+            if (user) {
+                const userCredits = await getUserCredits(user.id, user.email)
+
+                if (userCredits.credits <= 0) {
+                    return new Response(
+                        JSON.stringify({
+                            error: "insufficient_credits",
+                            message: "You've run out of credits. Each arc costs 1 credit.",
+                            credits: 0,
+                        }),
+                        {
+                            status: 402,
+                            headers: { "Content-Type": "application/json" },
+                        },
+                    )
+                }
+
+                const deducted = await deductCredit(user.id)
+                if (!deducted) {
+                    return new Response(
+                        JSON.stringify({
+                            error: "insufficient_credits",
+                            message: "Failed to deduct credit. Please try again.",
+                            credits: userCredits.credits,
+                        }),
+                        {
+                            status: 402,
+                            headers: { "Content-Type": "application/json" },
+                        },
+                    )
+                }
+
+                console.log(`[generate-chapter] Deducted 1 credit for arc chapter (user: ${user.id})`)
+            }
+        }
 
         // Point of View instruction
         const povInstructions = {

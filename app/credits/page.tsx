@@ -123,10 +123,13 @@ export default async function CreditsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-muted-foreground">
-                • Each story generation costs 1 credit, regardless of length or type
+                • Each short story generation costs 1 credit
+              </p>
+              <p className="text-muted-foreground">
+                • For novels: 1 credit per arc (all chapters in that arc included)
               </p>
               <p className="text-muted-foreground">• Credits never expire and can be used anytime</p>
-              <p className="text-muted-foreground">• New users get 3 free credits to start creating immediately</p>
+              <p className="text-muted-foreground">• New users get 15 free credits to start creating immediately</p>
               <p className="text-muted-foreground">• Save more by purchasing larger credit packages</p>
               <p className="text-sm text-primary font-semibold mt-4">
                 💡 Credit purchasing will be available soon! For now, enjoy your free credits.

@@ -66,10 +66,10 @@ export async function getUserCredits(userId: string, userEmail?: string): Promis
         return existing[0]
       }
 
-      // Create new credits record with 3 free credits for new users
+      // Create new credits record with 15 free credits for new users
       const result = await sql`
         INSERT INTO user_credits (user_id, credits)
-        VALUES (${userId}, 3)
+        VALUES (${userId}, 15)
         ON CONFLICT (user_id) DO UPDATE
         SET user_id = EXCLUDED.user_id
         RETURNING *
@@ -79,7 +79,7 @@ export async function getUserCredits(userId: string, userEmail?: string): Promis
       try {
         await sql`
           INSERT INTO credits_transactions (user_id, amount, transaction_type, description)
-          VALUES (${userId}, 3, 'signup', 'Welcome bonus - 3 free stories')
+          VALUES (${userId}, 15, 'signup', 'Welcome bonus - 15 free stories')
           ON CONFLICT DO NOTHING
         `
       } catch (error) {
@@ -97,7 +97,7 @@ export async function getUserCredits(userId: string, userEmail?: string): Promis
         console.error("All retry attempts failed, returning default credits")
         return {
           user_id: userId,
-          credits: 3,
+          credits: 15,
           total_generated: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -112,7 +112,7 @@ export async function getUserCredits(userId: string, userEmail?: string): Promis
   // Fallback default credits
   return {
     user_id: userId,
-    credits: 3,
+    credits: 15,
     total_generated: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

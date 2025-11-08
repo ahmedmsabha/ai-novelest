@@ -63,7 +63,7 @@ Open [http://localhost:3000](http://localhost:3000) 🎉
 
 ## 📝 What's Next?
 
-1. **Create an account** - Sign up to get 3 free story credits
+1. **Create an account** - Sign up to get 15 free story credits
 2. **Generate your first story** - Go to the Generate page
 3. **Customize** - Choose genre, tone, length, and type
 4. **Watch the magic** - See your story generate in real-time

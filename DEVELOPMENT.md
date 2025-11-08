@@ -123,7 +123,7 @@ pnpm lint
 
 ### Credit System
 
-- **New Users**: 3 free credits on signup
+- **New Users**: 15 free credits on signup
 - **Costs**: 1 credit per short story, 2 credits per novel
 - **Anonymous**: 3 generations before requiring signup
 

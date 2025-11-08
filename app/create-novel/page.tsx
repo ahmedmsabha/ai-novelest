@@ -385,6 +385,10 @@ function CreateNovelPageContent() {
             const allChapters = getAllChapters()
             const previousChapters = allChapters.slice(0, chapterIndex)
 
+            // Check if this is the first chapter of its arc
+            const arc = arcs.find(a => a.id === arcId)
+            const isFirstChapterOfArc = arc ? arc.chapters[0].id === chapter.id : false
+
             const response = await fetch("/api/generate-chapter", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -394,9 +398,22 @@ function CreateNovelPageContent() {
                     chapterTitle: chapter.title,
                     chapterSummary: chapter.summary,
                     previousChapters: previousChapters.map(ch => ({ title: ch.title, summary: ch.summary })),
+                    isFirstChapterOfArc, // Pass flag to indicate if this is first chapter of arc
                     ...novelMetadata,
                 }),
             })
+
+            if (response.status === 402) {
+                const data = await response.json()
+                toast({
+                    title: "Insufficient credits",
+                    description: data.message,
+                    variant: "destructive",
+                })
+                setIsConnecting(false)
+                setIsGenerating(false)
+                return
+            }
 
             if (!response.ok) {
                 throw new Error("Failed to generate chapter")
