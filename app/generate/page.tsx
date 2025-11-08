@@ -300,32 +300,40 @@ export default function GeneratePage() {
         throw new Error("No response body")
       }
 
-      let fullText = ""
+      let accumulatedText = ""
       let hasSeenTitle = false
+
+      console.log("[generate] Starting to read stream...")
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          console.log("[generate] Stream complete, final length:", accumulatedText.length)
+          break
+        }
 
         const chunk = decoder.decode(value, { stream: true })
-        fullText += chunk
+        console.log("[generate] Received chunk, length:", chunk.length)
+        
+        // For text stream, just append directly
+        accumulatedText += chunk
 
-        const lines = fullText.split("\n")
-        for (const line of lines) {
-          if (line.startsWith("0:")) {
-            const content = line.substring(2).trim()
-            if (content) {
-              const titleMatch = content.match(/^#\s+(.+)$/m)
-              if (titleMatch && !hasSeenTitle) {
-                const extractedTitle = titleMatch[1].trim()
-                setStoryTitle(extractedTitle)
-                hasSeenTitle = true
-              }
-              setGeneratedStory((prev) => prev + content)
-            }
+        // Extract title if not already found
+        if (!hasSeenTitle && accumulatedText.includes("#")) {
+          const titleMatch = accumulatedText.match(/^#\s+(.+)$/m)
+          if (titleMatch) {
+            const extractedTitle = titleMatch[1].trim()
+            setStoryTitle(extractedTitle)
+            hasSeenTitle = true
+            console.log("[generate] Title extracted:", extractedTitle)
           }
         }
+
+        // Update display with accumulated text
+        setGeneratedStory(accumulatedText)
       }
+
+      console.log("[generate] Final story length:", accumulatedText.length)
 
       // Track analytics
       analytics.storyGenerated({
@@ -333,7 +341,7 @@ export default function GeneratePage() {
         tone,
         length,
         storyType,
-        wordCount: fullText.split(/\s+/).length,
+        wordCount: accumulatedText.split(/\s+/).length,
       })
 
       toast({

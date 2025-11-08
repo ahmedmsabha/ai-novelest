@@ -222,7 +222,8 @@ Write a polished, publication-ready short story.`
       maxOutputTokens: storyType === "novel" ? 10000 : 3000,
     })
 
-    return result.toUIMessageStreamResponse()
+    // Use text stream response for simple text streaming
+    return result.toTextStreamResponse()
   } catch (error) {
     console.error("[generate-story] Error:", error)
     console.error("[generate-story] Error message:", error instanceof Error ? error.message : String(error))
